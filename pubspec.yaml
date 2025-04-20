@@ -1,4 +1,4 @@
-name: idx_test
+name: cnc_crtanje
 description: "A new Flutter project."
 publish_to: 'none'
 version: 0.1.0
@@ -9,7 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_bluetooth_serial: ^0.4.0
+  flutter_launcher_icons: ^0.14.3
+  web_socket_channel: ^3.0.1
 
 dev_dependencies:
   flutter_test:

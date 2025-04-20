@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
-import 'dart:convert' show utf8;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
   runApp(const MyApp());
@@ -12,6 +11,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
         home: Scaffold(
       appBar: AppBar(title: const Text("CNC crtanje")),
       body: const Center(
@@ -29,38 +29,18 @@ class DrawingScreen extends StatefulWidget {
 }
 
 class _DrawingScreenState extends State<DrawingScreen> {
-  late BluetoothConnection _connection;
-
-  String uspjeh = "";
-
-  @override
-  void initState() {
-    super.initState();
-    _povezi();
-  }
-
-  Future<void> _povezi() async {
-    try {
-      String macAdresa = "E4:65:B8:4C:79:E2";
-      _connection = await BluetoothConnection.toAddress(macAdresa);
-      debugPrint("Povezano na $macAdresa");
-      setState(() {
-        uspjeh = "Povezivanje uspjesno";
-      });
-    } catch (error) {
-      debugPrint("Kurcina $error");
-      setState(() {
-        uspjeh = "Povezivanje neuspjesno";
-      });
-    }
-  }
-
-  Future<void> salji(String data) async {
-    _connection.output.add(utf8.encode('$data\n'));
-    await _connection.output.allSent;
-  }
+  WebSocketChannel? channel;
+  final TextEditingController ipInputController = TextEditingController();
+  String? ipInput;
+  String connectedState = "Poveži";
 
   final List<Offset?> _points = [];
+
+  void posalji(int x, int y) {
+    if (channel != null) {
+      channel!.sink.add("$x/$y");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,13 +48,16 @@ class _DrawingScreenState extends State<DrawingScreen> {
     const paddingSize = 10.0;
     final contWidth = screenWidth - paddingSize * 2;
     final contHeight = contWidth * 4 / 3;
+
     int x = 0;
     int y = 0;
-    return Column(
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SingleChildScrollView(
+      child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        TextButton(onPressed: _povezi, child: Text("povezi")),
-        Text("Uspjeh: $uspjeh"),
         Padding(
           padding: const EdgeInsets.all(paddingSize),
           child: GestureDetector(
@@ -85,11 +68,10 @@ class _DrawingScreenState extends State<DrawingScreen> {
                     details.localPosition.dy >= 0 &&
                     details.localPosition.dy <= contHeight) {
                   _points.add(details.localPosition);
-                  x = ((details.localPosition.dx * 14000) / contWidth).toInt();
-                  y = ((details.localPosition.dy * 19000) / contHeight).toInt();
+                  y = ((details.localPosition.dx * 23250) / contWidth).toInt();
+                  x = ((details.localPosition.dy * 31000) / contHeight).toInt();
                   debugPrint("x: $x y: $y\n");
-                  salji(
-                      "$x/$y");
+                  posalji(x, y);
                 } else {
                   _points.add(null);
                 }
@@ -103,8 +85,8 @@ class _DrawingScreenState extends State<DrawingScreen> {
             child: Container(
                 width: contWidth,
                 height: contHeight,
-                decoration:
-                    BoxDecoration(border: Border.all(color: Colors.black)),
+                decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black)),
                 child: CustomPaint(
                   size: Size.infinite,
                   painter: LinePainter(_points),
@@ -112,13 +94,74 @@ class _DrawingScreenState extends State<DrawingScreen> {
           ),
         ),
         TextButton(
-            onPressed: _points.clear,
+            onPressed: () {
+              setState(() {
+                _points.clear();
+              });
+            },
             child: const Text(
               "Reset",
               style: TextStyle(fontSize: 25),
-            ))
+            )),
+        TextButton(
+            onPressed:  () async {
+              setState(() {
+                connectedState = "Povezivanje...";
+              });
+              await Future.delayed(const Duration(milliseconds: 350));
+              try {
+                final uri = Uri.parse("ws://${ipInputController.text}/ws");
+                final newChannel = WebSocketChannel.connect(uri);
+
+                newChannel.stream.listen(
+                  (event) {
+                    debugPrint("Primljeno: $event");
+                  },
+                  onError: (error) {
+                    debugPrint("Greška u vezi: $error");
+                    setState(() {
+                      connectedState = "Povezivanje neuspješno";
+                    });
+                  },
+                  onDone: () {
+                    debugPrint("Veza zatvorena.");
+                  },
+                );
+
+                setState(() {
+                  channel = newChannel;
+                  connectedState = "Povezano";
+                });
+              } catch (error) {
+                debugPrint("Try/catch error: $error");
+                setState(() {
+                  connectedState = "Povezivanje neuspješno";
+                });
+              }
+            },
+            child: Text(
+              connectedState,
+              style: const TextStyle(fontSize: 20),
+            )),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: TextField(
+            controller: ipInputController,
+            decoration:
+                const InputDecoration(labelText: "Unesi IP adresu uređaja"),
+          ),
+        ),
       ],
+    ),
+    ),
     );
+  }
+
+  @override
+  void dispose() {
+    ipInputController.dispose();
+    channel?.sink.close();
+    super.dispose();
   }
 }
 
@@ -142,7 +185,5 @@ class LinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return true;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

@@ -1,3 +1,3 @@
-# idx_test
+# cnc_crtanje
 
 A new Flutter project.

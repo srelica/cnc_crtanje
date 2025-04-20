@@ -1,4 +1,4 @@
-package com.example.idx_test
+package com.example.cnc_crtanje
 
 import io.flutter.embedding.android.FlutterActivity
 
